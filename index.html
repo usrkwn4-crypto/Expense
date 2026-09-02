@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tracking · 55/5/10/15/15</title>
+    <script src="https://cdn.tailwindcss.com">
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js">
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&display=swap');
+
+        * {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        body {
+            background: #f6f9fc;
+        }
+
+        .bucket-card {
+            transition: all 0.2s ease;
+        }
+        .bucket-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+        }
+
+        .meter-bar {
+            transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .tab-active {
+            border-bottom: 2px solid #2563eb;
+            color: #0f172a;
+            font-weight: 600;
+        }
+        .tab-inactive {
+            color: #64748b;
+            border-bottom: 2px solid transparent;
+        }
+        .tab-inactive:hover {
+            color: #1e293b;
+            border-bottom-color: #cbd5e1;
+        }
+
+        .transaction-row:hover {
+            background: #f8fafc;
+        }
+
+        .modal-overlay {
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal-content {
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+        }
+        .modal-overlay.active {
+            opacity: 1 !important;
+            pointer-events: auto !important;
+        }
+        .modal-overlay.active .modal-content {
+            transform: scale(1) !important;
+            opacity: 1 !important;
+        }
+
+        .month-card {
+            border-left: 4px solid #e2e8f0;
+            transition: border-color 0.2s ease;
+        }
+        .month-card:hover {
+            border-left-color: #2563eb;
+        }
+
+        .action-icon {
+            cursor: pointer;
+            color: #94a3b8;
+            transition: color 0.15s ease;
+            padding: 0.1rem 0.3rem;
+            border-radius: 0.25rem;
+            background: transparent;
+            border: none;
+            font-size: 1rem;
+        }
+        .action-icon:hover {
+            color: #0f172a;
+            background: #f1f5f9;
+        }
+        .action-icon.danger:hover {
+            color: #ef4444;
+            background: #fef2f2;
+        }
+
+        /* toast */
+        #toast {
+            transition: opacity 0.4s ease, transform 0.4s ease;
+            opacity: 0;
+            transform: translateY(16px);
+            pointer-events: none;
+        }
+        #toast.show {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
+
+        <!-- ACCOUNT SELECTOR -->
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <span class="text-sm font-medium text-slate-500">Account</span>
+                <button onclick="openAccountModal()" class="flex items-center gap-2 text-sm font-semibold text-slate-700 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full border border-slate-200/70 shadow-sm hover:border-slate-300 transition">
+                    <span id="currentAccountName">Personal</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+                <span id="currentAccountCurrency" class="text-xs text-slate-400 bg-white/60 px-2 py-0.5 rounded-full border border-slate-200/50">USD</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="exportData()" class="text-xs text-slate-500 hover:text-blue-600 transition px-3 py-1.5 rounded-lg border border-slate-200/60 hover:border-blue-300 bg-white/60 flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Export
+                </button>
+                <button onclick="document.getElementById('importInput').click()" class="text-xs text-slate-500 hover:text-blue-600 transition px-3 py-1.5 rounded-lg border border-slate-200/60 hover:border-blue-300 bg-white/60 flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4 4m4-4v12" />
+                    </svg>
+                    Import
+                </button>
+                <input id="importInput" type="file" accept=".xlsx,.csv,.xls" class="hidden" onchange="importData(event)" />
+            </div>
+        </div>
+
+        <!-- HEADER -->
+        <header class="flex items-center gap-3 mb-6">
+            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 4.5" />
+                </svg>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-light text-slate-800 tracking-tight">Tracking</h1>
+            <span class="text-xs text-slate-400 ml-2">55 / 5 / 10 / 15 · 15</span>
+        </header>
+
+        <!-- INCOME ROW -->
+        <div class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-slate-200/70 p-4 sm:p-6 mb-6 flex flex-col sm:flex-row sm:items-end gap-4">
+            <div class="flex-1 min-w-0">
+                <label class="text-xs font-medium text-slate-500 uppercase tracking-wider">Monthly Income (after tax)</label>
+                <div class="mt-1 flex items-center gap-2">
+                    <span class="text-2xl font-light text-slate-400" id="incomeCurrencyPrefix">$</span>
+                    <input id="incomeInput" type="number" value="5000" min="0" step="100"
+                    class="w-full sm:w-64 text-2xl font-semibold text-slate-800 bg-transparent border-0 border-b border-slate-200 focus:border-blue-500 focus:ring-0 outline-none transition px-0 py-1" />
+                </div>
+            </div>
+            <button onclick="updateIncome()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition shadow-sm whitespace-nowrap">
+                Update Budget
+            </button>
+            <button onclick="resetCurrentMonth()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2.5 rounded-xl font-medium text-sm transition shadow-sm whitespace-nowrap flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Reset Month
+            </button>
+        </div>
+
+        <!-- BUCKET METER -->
+        <section class="mb-8">
+            <div class="flex items-center justify-between mb-2">
+                <h2 class="text-sm font-medium text-slate-600 uppercase tracking-wider">Allocation Meter</h2>
+                <span class="text-xs text-slate-400">based on <span id="displayIncome">$5,000</span></span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-3 bucket-grid" id="bucketGrid">
+                <!-- injected by js -->
+            </div>
+
+            <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm bg-white/60 rounded-xl px-4 py-2.5 border border-slate-200/50">
+                <div class="flex items-center gap-4">
+                    <span class="text-slate-500">Allocated</span>
+                    <span class="font-semibold text-slate-700" id="totalAllocated">$5,000</span>
+                    <span class="text-slate-300">·</span>
+                    <span class="text-slate-500">Spent</span>
+                    <span class="font-semibold text-slate-700" id="totalSpent">$0</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-slate-400 text-xs">remaining</span>
+                    <span class="font-bold text-emerald-600" id="totalRemaining">$5,000</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- TRANSACTIONS SECTION -->
+        <section>
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-sm font-medium text-slate-600 uppercase tracking-wider">Transactions</h2>
+                <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm flex items-center gap-1.5">
+                    <span>+</span> Add Transaction
+                </button>
+            </div>
+
+            <!-- Tabs -->
+            <div class="flex gap-6 border-b border-slate-200/70 mb-5">
+                <button class="tab-btn tab-active pb-2.5 text-sm font-medium transition" data-tab="all">All Transactions</button>
+                <button class="tab-btn tab-inactive pb-2.5 text-sm font-medium transition" data-tab="monthly">Monthly Summary</button>
+            </div>
+
+            <!-- Tab Panels -->
+            <div>
+                <!-- ALL TRANSACTIONS -->
+                <div id="panel-all" class="tab-panel">
+                    <div class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-slate-200/70 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-slate-50/60 text-xs text-slate-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-4 sm:px-6 py-3 text-left font-medium">Date</th>
+                                        <th class="px-4 sm:px-6 py-3 text-left font-medium">Description</th>
+                                        <th class="px-4 sm:px-6 py-3 text-right font-medium">Amount</th>
+                                        <th class="px-4 sm:px-6 py-3 text-left font-medium">Category</th>
+                                        <th class="px-4 sm:px-6 py-3 text-left font-medium">Bucket</th>
+                                        <th class="px-4 sm:px-6 py-3 text-center font-medium">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactionTableBody" class="divide-y divide-slate-100">
+                                    <!-- rows injected -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="emptyState" class="py-12 text-center text-slate-400 text-sm">
+                            No transactions yet. Click "Add Transaction" to get started.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MONTHLY SUMMARY -->
+                <div id="panel-monthly" class="tab-panel hidden">
+                    <div id="monthlySummaryContainer" class="space-y-4">
+                        <!-- injected by js -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="mt-10 pt-6 border-t border-slate-200/60 text-xs text-slate-400 flex flex-wrap justify-between gap-2">
+            <span>Tracking v1.0 · 55/5/10/15/15 allocation</span>
+            <span>Data saved locally on this device.</span>
+        </footer>
+    </div>
+
+    <!-- ─── MODALS ────────────────────────────────────────────── -->
+
+    <!-- ADD / EDIT TRANSACTION -->
+    <div id="modalOverlay" class="modal-overlay fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50 opacity-0 pointer-events-none">
+        <div id="modalContent" class="modal-content bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md relative transform scale-95 opacity-0">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <h3 id="modalTitle" class="text-lg font-semibold text-slate-800 mb-4">Add Transaction</h3>
+            <input type="hidden" id="editTxId" value="">
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs font-medium text-slate-500">Description</label>
+                    <input id="modalDesc" type="text" placeholder="e.g. Groceries" class="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-slate-500">Amount</label>
+                    <input id="modalAmount" type="number" step="0.01" min="0" placeholder="0.00" class="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-slate-500">Date</label>
+                    <input id="modalDate" type="date" class="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-slate-500">Type</label>
+                    <select id="modalType" class="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm bg-white">
+                        <option value="expense">Expense</option>
+                        <option value="income">Income</option>
+                    </select>
+                </div>
+                <div id="modalBucketGroup">
+                    <label class="text-xs font-medium text-slate-500">Bucket</label>
+                    <select id="modalBucket" class="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm bg-white">
+                        <option value="necessities">Necessities</option>
+                        <option value="free_money">Free Money</option>
+                        <option value="debt_invest">Short Invest</option>
+                        <option value="vacation">Vacation</option>
+                        <option value="savings">Savings</option>
+                    </select>
+                </div>
+                <button onclick="submitModalTransaction()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-medium transition">
+                    Save Transaction
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ACCOUNT MANAGER -->
+    <div id="accountModalOverlay" class="modal-overlay fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50 opacity-0 pointer-events-none">
+        <div id="accountModalContent" class="modal-content bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md relative transform scale-95 opacity-0">
+            <button onclick="closeAccountModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <h3 class="text-lg font-semibold text-slate-800 mb-4">Manage Accounts</h3>
+            <div id="accountList" class="space-y-2 mb-4">
+                <!-- injected -->
+            </div>
+            <button onclick="showAddAccount()" class="w-full border-2 border-dashed border-slate-300 hover:border-blue-400 text-slate-500 hover:text-blue-600 py-2.5 rounded-lg text-sm font-medium transition">
+                + Add Account
+            </button>
+        </div>
+    </div>
+
+    <!-- ADD ACCOUNT -->
+    <div id="addAccountModalOverlay" class="modal-overlay fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-[60] opacity-0 pointer-events-none">
+        <div id="addAccountModalContent" class="modal-content bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm relative transform scale-95 opacity-0">
+            <button onclick="closeAddAccount()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <h3 class="text-lg font-semibold text-slate-800 mb-4">Add Account</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs font-medium text-slate-500">Account Name</label>
+                    <input id="newAccountName" type="text" placeholder="e.g. Business" class="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-slate-500">Currency</label>
+                    <select id="newAccountCurrency" class="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm bg-white">
+                        <option value="USD">USD ($)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="GBP">GBP (£)</option>
+                        <option value="INR">INR (₹)</option>
+                        <option value="JPY">JPY (¥)</option>
+                        <option value="CAD">CAD ($)</option>
+                        <option value="AUD">AUD ($)</option>
+                        <option value="AED">AED (AED)</option>
+                    </select>
+                </div>
+                <button onclick="addAccount()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-medium transition">
+                    Create Account
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EDIT ACCOUNT -->
+    <div id="editAccountModalOverlay" class="modal-overlay fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-[70] opacity-0 pointer-events-none">
+        <div id="editAccountModalContent" class="modal-content bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm relative transform scale-95 opacity-0">
+            <button onclick="closeEditAccountModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <h3 class="text-lg font-semibold text-slate-800 mb-4">Edit Account</h3>
+            <input type="hidden" id="editAccountId" value="">
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs font-medium text-slate-500">Account Name</label>
+                    <input id="editAccountName" type="text" class="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-slate-500">Currency</label>
+                    <select id="editAccountCurrency" class="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-400 outline-none text-sm bg-white">
+                        <option value="USD">USD ($)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="GBP">GBP (£)</option>
+                        <option value="INR">INR (₹)</option>
+                        <option value="JPY">JPY (¥)</option>
+                        <option value="CAD">CAD ($)</option>
+                        <option value="AUD">AUD ($)</option>
+                        <option value="AED">AED (AED)</option>
+                    </select>
+                </div>
+                <button onclick="saveEditAccount()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-medium transition">
+                    Update Account
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW / EDIT MONTH -->
+    <div id="viewEditModalOverlay" class="modal-overlay fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50 opacity-0 pointer-events-none">
+        <div id="viewEditModalContent" class="modal-content bg-white rounded-2xl shadow-2xl p-6 w-full max-w-2xl relative transform scale-95 opacity-0 max-h-[80vh] overflow-y-auto">
+            <button onclick="closeViewEditModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <h3 id="viewEditTitle" class="text-lg font-semibold text-slate-800 mb-4">Month Details</h3>
+            <div id="viewEditContent" class="space-y-3">
+                <!-- injected -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-5 py-2.5 rounded-xl text-sm shadow-lg z-[100]">
+        <span id="toastMessage">Saved</span>
+    </div>
+
+    <script>
+        // ─── STATE ──────────────────────────────────────────────
+        let state = {
+            accounts: [],
+            selectedAccountId: null,
+        };
+
+        const STORAGE_KEY = 'tracking_app_data';
+
+        // ─── PERSISTENCE ──────────────────────────────────────────
+
+        function saveState() {
+            try {
+                const data = JSON.stringify({
+                    accounts: state.accounts,
+                    selectedAccountId: state.selectedAccountId,
+                });
+                localStorage.setItem(STORAGE_KEY, data);
+            } catch (e) {
+                console.warn('Failed to save state:', e);
+            }
+        }
+
+        function loadState() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    state.accounts = parsed.accounts || [];
+                    state.selectedAccountId = parsed.selectedAccountId || null;
+                    return true;
+                }
+            } catch (e) {
+                console.warn('Failed to load state:', e);
+            }
+            return false;
+        }
+
+        function showToast(message, duration = 2000) {
+            const el = document.getElementById('toast');
+            const msgEl = document.getElementById('toastMessage');
+            msgEl.textContent = message;
+            el.classList.add('show');
+            clearTimeout(el._timer);
+            el._timer = setTimeout(() => {
+                el.classList.remove('show');
+            }, duration);
+        }
+
+        // ─── CONSTANTS ────────────────────────────────────────────
+        const currencySymbols = {
+            USD: '$',
+            EUR: '€',
+            GBP: '£',
+            INR: '₹',
+            JPY: '¥',
+            CAD: '$',
+            AUD: '$',
+            AED: 'AED',
+        };
+
+        const bucketConfig = {
+            necessities: { label: 'Necessities', pct: 55, color: '#2563eb', spent: 0 },
+            free_money: { label: 'Free Money', pct: 5, color: '#8b5cf6', spent: 0 },
+            debt_invest: { label: 'Short Invest', pct: 10, color: '#f59e0b', spent: 0 },
+            vacation: { label: 'Vacation', pct: 15, color: '#06b6d4', spent: 0 },
+            savings: { label: 'Savings', pct: 15, color: '#22c55e', spent: 0 },
+        };
+        const bucketKeys = ['necessities', 'free_money', 'debt_invest', 'vacation', 'savings'];
+
+        // ─── HELPERS ──────────────────────────────────────────────
+        function fmt(n) { return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
+
+        function fmtDollars(n, currency = 'USD') {
+            return (currencySymbols[currency] || '$') + fmt(n);
+        }
+
+        function today() { return new Date().toISOString().slice(0, 10); }
+
+        function getCurrentMonth() { return today().substring(0, 7); }
+
+        function getMonthLabel(dateStr) {
+            const d = new Date(dateStr + '-01');
+            return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+        }
+
+        function getSelectedAccount() {
+            return state.accounts.find(a => a.id === state.selectedAccountId);
+        }
+
+        function generateId() { return Math.random().toString(36).substring(2, 9); }
+
+        function getBucketTarget(income, bucketKey) {
+            const pct = bucketConfig[bucketKey].pct;
+            return Math.round((income * pct) / 100);
+        }
+
+        function getBucketSpent(transactions, bucketKey) {
+            return transactions
+                .filter(t => t.bucket === bucketKey && t.type === 'debit')
+                .reduce((sum, t) => sum + t.amount, 0);
+        }
+
+        function getTotalSpent(transactions) {
+            return transactions.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+        }
+
+        function getTotalIncome(transactions) {
+            return transactions.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
+        }
+
+        // ─── RENDER ──────────────────────────────────────────────
+        function render() {
+            const account = getSelectedAccount();
+            if (!account) {
+                document.getElementById('bucketGrid').innerHTML =
+                    `<div class="col-span-5 text-center text-slate-400 py-8">Please add an account to start tracking.</div>`;
+                document.getElementById('transactionTableBody').innerHTML = '';
+                document.getElementById('emptyState').classList.remove('hidden');
+                document.getElementById('monthlySummaryContainer').innerHTML = '';
+                document.getElementById('currentAccountName').textContent = 'No Account';
+                document.getElementById('currentAccountCurrency').textContent = '';
+                saveState();
+                return;
+            }
+
+            document.getElementById('currentAccountName').textContent = account.name;
+            document.getElementById('currentAccountCurrency').textContent = account.currency;
+            document.getElementById('incomeCurrencyPrefix').textContent = currencySymbols[account.currency] || '$';
+            document.getElementById('incomeInput').value = account.income || 0;
+
+            renderBuckets(account);
+            renderTransactions(account);
+            renderMonthlySummary(account);
+            renderTotals(account);
+            updateIncomeDisplay(account);
+            renderAccountList();
+            saveState();
+        }
+
+        function renderBuckets(account) {
+            const grid = document.getElementById('bucketGrid');
+            const income = account.income || 0;
+            let html = '';
+            for (const key of bucketKeys) {
+                const b = bucketConfig[key];
+                const target = getBucketTarget(income, key);
+                const spent = getBucketSpent(account.transactions, key);
+                const pctUsed = target > 0 ? Math.min(100, (spent / target) * 100) : 0;
+                const remaining = Math.max(0, target - spent);
+                const statusColor = pctUsed > 95 ? 'text-red-500' : pctUsed > 80 ? 'text-amber-500' : 'text-emerald-500';
+
+                html += `
+                    <div class="bucket-card bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/70 p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-sm font-medium text-slate-700">${b.label}</span>
+                            <span class="text-xs font-medium text-slate-400">${b.pct}%</span>
+                        </div>
+                        <div class="flex items-baseline gap-1.5">
+                            <span class="text-lg font-bold text-slate-800">${fmtDollars(spent, account.currency)}</span>
+                            <span class="text-xs text-slate-400">/ ${fmtDollars(target, account.currency)}</span>
+                        </div>
+                        <div class="mt-2 h-1 w-full bg-slate-100 rounded-full overflow-hidden">
+                            <div class="meter-bar h-full rounded-full" style="width:${pctUsed}%; background:${b.color};"></div>
+                        </div>
+                        <div class="mt-1.5 flex justify-between text-[10px]">
+                            <span class="${statusColor} font-medium">${pctUsed.toFixed(0)}% used</span>
+                            <span class="text-slate-400">${fmtDollars(remaining, account.currency)} left</span>
+                        </div>
+                    </div>
+                `;
+            }
+            grid.innerHTML = html;
+        }
+
+        function renderTransactions(account) {
+            const tbody = document.getElementById('transactionTableBody');
+            const empty = document.getElementById('emptyState');
+            const txs = account.transactions.slice().sort((a, b) => b.date.localeCompare(a.date));
+
+            if (txs.length === 0) {
+                tbody.innerHTML = '';
+                empty.classList.remove('hidden');
+                return;
+            }
+            empty.classList.add('hidden');
+
+            let html = '';
+            for (const tx of txs) {
+                const isCredit = tx.type === 'credit';
+                const sign = isCredit ? '+' : '-';
+                const color = isCredit ? 'text-emerald-600' : 'text-slate-700';
+                const bucketLabel = bucketConfig[tx.bucket]?.label || tx.bucket || '—';
+                const bucketColor = bucketConfig[tx.bucket]?.color || '#94a3b8';
+
+                html += `
+                    <tr class="transaction-row">
+                        <td class="px-4 sm:px-6 py-3 text-slate-600 whitespace-nowrap">${tx.date}</td>
+                        <td class="px-4 sm:px-6 py-3 text-slate-700 font-medium">${tx.description}</td>
+                        <td class="px-4 sm:px-6 py-3 text-right font-medium ${color}">${sign}${fmtDollars(tx.amount, account.currency)}</td>
+                        <td class="px-4 sm:px-6 py-3 text-slate-500">${tx.category || '—'}</td>
+                        <td class="px-4 sm:px-6 py-3">
+                            <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style="background:${bucketColor}18; color:${bucketColor};">
+                                <span class="w-1.5 h-1.5 rounded-full" style="background:${bucketColor};"></span>
+                                ${bucketLabel}
+                            </span>
+                        </td>
+                        <td class="px-4 sm:px-6 py-3 text-center">
+                            <button onclick="openModal('${tx.id}')" class="action-icon" title="Edit">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                            </button>
+                            <button onclick="deleteTransaction('${tx.id}')" class="action-icon danger" title="Delete">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }
+            tbody.innerHTML = html;
+        }
+
+        function renderMonthlySummary(account) {
+            const container = document.getElementById('monthlySummaryContainer');
+            const txs = account.transactions;
+
+            if (txs.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-slate-200/70 p-6 text-center text-slate-400 text-sm">
+                        No transactions to summarize.
+                    </div>
+                `;
+                return;
+            }
+
+            const groups = {};
+            for (const tx of txs) {
+                const monthKey = tx.date.substring(0, 7);
+                if (!groups[monthKey]) {
+                    groups[monthKey] = { transactions: [], totalIncome: 0, totalExpense: 0, buckets: {} };
+                }
+                groups[monthKey].transactions.push(tx);
+                if (tx.type === 'credit') {
+                    groups[monthKey].totalIncome += tx.amount;
+                } else {
+                    groups[monthKey].totalExpense += tx.amount;
+                    if (!groups[monthKey].buckets[tx.bucket]) {
+                        groups[monthKey].buckets[tx.bucket] = 0;
+                    }
+                    groups[monthKey].buckets[tx.bucket] += tx.amount;
+                }
+            }
+
+            let html = '';
+            const sortedMonths = Object.keys(groups).sort().reverse();
+            for (const monthKey of sortedMonths) {
+                const g = groups[monthKey];
+                const net = g.totalIncome - g.totalExpense;
+                const monthLabel = getMonthLabel(monthKey);
+
+                html += `
+                    <div class="month-card bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-slate-200/70 p-5">
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                            <h4 class="text-sm font-semibold text-slate-700">${monthLabel}</h4>
+                            <div class="flex items-center gap-3 text-xs">
+                                <span class="text-emerald-600">+${fmtDollars(g.totalIncome, account.currency)}</span>
+                                <span class="text-slate-300">|</span>
+                                <span class="text-red-500">-${fmtDollars(g.totalExpense, account.currency)}</span>
+                                <span class="text-slate-300">|</span>
+                                <span class="font-medium ${net >= 0 ? 'text-emerald-600' : 'text-red-500'}">Net ${fmtDollars(net, account.currency)}</span>
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <button onclick="viewMonth('${monthKey}')" class="action-icon" title="View / Edit">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                </button>
+                                <button onclick="deleteMonth('${monthKey}')" class="action-icon danger" title="Delete Month">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap gap-3 text-xs">
+                            ${Object.keys(g.buckets).map(key => `
+                                <span class="inline-flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200/60">
+                                    <span class="w-1.5 h-1.5 rounded-full" style="background:${bucketConfig[key]?.color || '#94a3b8'};"></span>
+                                    ${bucketConfig[key]?.label || key}: ${fmtDollars(g.buckets[key], account.currency)}
+                                </span>
+                            `).join('')}
+                            ${Object.keys(g.buckets).length === 0 ? '<span class="text-slate-400">No expenses this month</span>' : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+
+        function renderTotals(account) {
+            const totalSpent = getTotalSpent(account.transactions);
+            const totalIncome = getTotalIncome(account.transactions) || account.income || 0;
+            const remaining = Math.max(0, totalIncome - totalSpent);
+
+            document.getElementById('totalSpent').textContent = fmtDollars(totalSpent, account.currency);
+            document.getElementById('totalRemaining').textContent = fmtDollars(remaining, account.currency);
+            const allocated = bucketKeys.reduce((sum, key) => sum + getBucketTarget(account.income || 0, key), 0);
+            document.getElementById('totalAllocated').textContent = fmtDollars(allocated, account.currency);
+        }
+
+        function updateIncomeDisplay(account) {
+            document.getElementById('displayIncome').textContent = fmtDollars(account.income || 0, account.currency);
+        }
+
+        // ─── ACCOUNT MODALS ──────────────────────────────────────
+
+        function openAccountModal() {
+            renderAccountList();
+            document.getElementById('accountModalOverlay').classList.add('active');
+        }
+
+        function closeAccountModal() {
+            document.getElementById('accountModalOverlay').classList.remove('active');
+        }
+
+        function renderAccountList() {
+            const container = document.getElementById('accountList');
+            if (state.accounts.length === 0) {
+                container.innerHTML =
+                    `<div class="text-center text-slate-400 py-4 text-sm">No accounts yet. Add one below.</div>`;
+                return;
+            }
+            let html = '';
+            for (const acc of state.accounts) {
+                const active = acc.id === state.selectedAccountId;
+                html += `
+                    <div class="flex items-center justify-between p-3 rounded-xl border ${active ? 'border-blue-300 bg-blue-50/50' : 'border-slate-200/60 bg-white/60'} hover:border-slate-300 transition">
+                        <div class="flex items-center gap-3 cursor-pointer flex-1" onclick="selectAccount('${acc.id}')">
+                            <span class="font-medium text-slate-700">${acc.name}</span>
+                            <span class="text-xs text-slate-400">${acc.currency}</span>
+                            ${active ? '<span class="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">Active</span>' : ''}
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="openEditAccountModal('${acc.id}')" class="action-icon" title="Edit Account">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                            </button>
+                            <button onclick="deleteAccount('${acc.id}')" class="action-icon danger" title="Delete Account">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+
+        function selectAccount(id) {
+            state.selectedAccountId = id;
+            closeAccountModal();
+            render();
+        }
+
+        // ─── ADD ACCOUNT ─────────────────────────────────────────
+
+        function showAddAccount() {
+            closeAccountModal();
+            document.getElementById('addAccountModalOverlay').classList.add('active');
+        }
+
+        function closeAddAccount() {
+            document.getElementById('addAccountModalOverlay').classList.remove('active');
+            openAccountModal();
+        }
+
+        function addAccount() {
+            const name = document.getElementById('newAccountName').value.trim();
+            const currency = document.getElementById('newAccountCurrency').value;
+            if (!name) {
+                alert('Please enter an account name.');
+                return;
+            }
+            const newAccount = {
+                id: generateId(),
+                name: name,
+                currency: currency,
+                income: 5000,
+                transactions: [],
+            };
+            state.accounts.push(newAccount);
+            state.selectedAccountId = newAccount.id;
+            document.getElementById('newAccountName').value = '';
+            closeAddAccount();
+            render();
+            openAccountModal();
+            showToast(`Account "${name}" created`);
+        }
+
+        // ─── EDIT ACCOUNT ────────────────────────────────────────
+
+        function openEditAccountModal(id) {
+            const account = state.accounts.find(a => a.id === id);
+            if (!account) return;
+            document.getElementById('editAccountId').value = id;
+            document.getElementById('editAccountName').value = account.name;
+            document.getElementById('editAccountCurrency').value = account.currency;
+            document.getElementById('editAccountModalOverlay').classList.add('active');
+        }
+
+        function closeEditAccountModal() {
+            document.getElementById('editAccountModalOverlay').classList.remove('active');
+        }
+
+        function saveEditAccount() {
+            const id = document.getElementById('editAccountId').value;
+            const name = document.getElementById('editAccountName').value.trim();
+            const currency = document.getElementById('editAccountCurrency').value;
+            if (!name) {
+                alert('Please enter an account name.');
+                return;
+            }
+            const account = state.accounts.find(a => a.id === id);
+            if (account) {
+                account.name = name;
+                account.currency = currency;
+                closeEditAccountModal();
+                render();
+                openAccountModal();
+                showToast(`Account updated`);
+            }
+        }
+
+        function deleteAccount(id) {
+            if (!confirm(`Delete account "${state.accounts.find(a => a.id === id)?.name}" and all its data?`)) return;
+            state.accounts = state.accounts.filter(a => a.id !== id);
+            if (state.selectedAccountId === id) {
+                state.selectedAccountId = state.accounts.length > 0 ? state.accounts[0].id : null;
+            }
+            closeAccountModal();
+            render();
+            openAccountModal();
+            showToast(`Account deleted`);
+        }
+
+        // ─── INCOME ──────────────────────────────────────────────
+
+        function updateIncome() {
+            const account = getSelectedAccount();
+            if (!account) return;
+            const val = parseFloat(document.getElementById('incomeInput').value);
+            if (!isNaN(val) && val >= 0) {
+                account.income = val;
+                render();
+                showToast(`Budget updated to ${fmtDollars(val, account.currency)}`);
+            }
+        }
+
+        // ─── ADD / EDIT TRANSACTION ─────────────────────────────
+
+        function openModal(txId = null) {
+            const account = getSelectedAccount();
+            if (!account) {
+                alert('Please create an account first.');
+                return;
+            }
+
+            const overlay = document.getElementById('modalOverlay');
+            const title = document.getElementById('modalTitle');
+            const desc = document.getElementById('modalDesc');
+            const amount = document.getElementById('modalAmount');
+            const date = document.getElementById('modalDate');
+            const type = document.getElementById('modalType');
+            const bucket = document.getElementById('modalBucket');
+            const editId = document.getElementById('editTxId');
+
+            if (txId) {
+                const tx = account.transactions.find(t => t.id === txId);
+                if (!tx) return;
+                title.textContent = 'Edit Transaction';
+                editId.value = txId;
+                desc.value = tx.description;
+                amount.value = tx.amount;
+                date.value = tx.date;
+                type.value = tx.type;
+                bucket.value = tx.bucket || 'necessities';
+            } else {
+                title.textContent = 'Add Transaction';
+                editId.value = '';
+                desc.value = '';
+                amount.value = '';
+                date.value = today();
+                type.value = 'expense';
+                bucket.value = 'necessities';
+            }
+            toggleModalBucket();
+            overlay.classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.remove('active');
+            document.getElementById('editTxId').value = '';
+        }
+
+        function toggleModalBucket() {
+            const type = document.getElementById('modalType').value;
+            const group = document.getElementById('modalBucketGroup');
+            if (type === 'income') {
+                group.style.display = 'none';
+            } else {
+                group.style.display = 'block';
+            }
+        }
+        document.getElementById('modalType').addEventListener('change', toggleModalBucket);
+
+        function submitModalTransaction() {
+            const account = getSelectedAccount();
+            if (!account) return;
+
+            const desc = document.getElementById('modalDesc').value.trim() || 'Manual entry';
+            const amount = parseFloat(document.getElementById('modalAmount').value);
+            const date = document.getElementById('modalDate').value || today();
+            const type = document.getElementById('modalType').value;
+            let bucket = document.getElementById('modalBucket').value;
+            const editId = document.getElementById('editTxId').value;
+
+            if (isNaN(amount) || amount <= 0) {
+                alert('Please enter a valid positive amount.');
+                return;
+            }
+
+            if (type === 'income') bucket = 'income';
+
+            const txData = {
+                description: desc,
+                amount: Math.round(amount * 100) / 100,
+                date: date,
+                type: type === 'income' ? 'credit' : 'debit',
+                category: type === 'income' ? 'Income' : bucketConfig[bucket]?.label || 'Expense',
+                bucket: bucket,
+            };
+
+            if (editId) {
+                const idx = account.transactions.findIndex(t => t.id === editId);
+                if (idx > -1) {
+                    account.transactions[idx] = { ...account.transactions[idx], ...txData };
+                }
+                showToast('Transaction updated');
+            } else {
+                txData.id = generateId();
+                account.transactions.push(txData);
+                showToast('Transaction added');
+            }
+
+            closeModal();
+            render();
+        }
+
+        // ─── DELETE TRANSACTION ─────────────────────────────────
+
+        function deleteTransaction(txId) {
+            if (!confirm('Delete this transaction?')) return;
+            const account = getSelectedAccount();
+            if (!account) return;
+            account.transactions = account.transactions.filter(t => t.id !== txId);
+            render();
+            if (document.getElementById('viewEditModalOverlay').classList.contains('active') && window._currentViewMonth) {
+                viewMonth(window._currentViewMonth);
+            }
+            showToast('Transaction deleted');
+        }
+
+        // ─── MONTHLY ACTIONS ─────────────────────────────────────
+
+        function viewMonth(monthKey) {
+            window._currentViewMonth = monthKey;
+            const account = getSelectedAccount();
+            if (!account) return;
+
+            const txs = account.transactions.filter(t => t.date.startsWith(monthKey));
+            const container = document.getElementById('viewEditContent');
+            const title = document.getElementById('viewEditTitle');
+
+            title.textContent = getMonthLabel(monthKey);
+
+            if (txs.length === 0) {
+                container.innerHTML =
+                `<div class="text-center text-slate-400 py-4 text-sm">No transactions for this month.</div>`;
+            } else {
+                let html =
+                    `<div class="space-y-2 max-h-96 overflow-y-auto pr-2">`;
+                for (const tx of txs) {
+                    const isCredit = tx.type === 'credit';
+                    const sign = isCredit ? '+' : '-';
+                    const color = isCredit ? 'text-emerald-600' : 'text-slate-700';
+                    const bucketLabel = bucketConfig[tx.bucket]?.label || tx.bucket || '—';
+                    html += `
+                        <div class="flex items-center justify-between p-2 rounded-lg bg-slate-50/80 border border-slate-200/50 text-sm">
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <span class="text-slate-500 w-20">${tx.date}</span>
+                                <span class="font-medium text-slate-700">${tx.description}</span>
+                                <span class="text-xs px-2 py-0.5 rounded-full bg-slate-200/60 text-slate-600">${bucketLabel}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium ${color}">${sign}${fmtDollars(tx.amount, account.currency)}</span>
+                                <button onclick="editTransaction('${tx.id}')" class="action-icon" title="Edit">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                </button>
+                                <button onclick="deleteTransaction('${tx.id}')" class="action-icon danger" title="Delete">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+                html += `</div>`;
+                container.innerHTML = html;
+            }
+
+            document.getElementById('viewEditModalOverlay').classList.add('active');
+        }
+
+        function closeViewEditModal() {
+            document.getElementById('viewEditModalOverlay').classList.remove('active');
+        }
+
+        function editTransaction(txId) {
+            closeViewEditModal();
+            setTimeout(() => openModal(txId), 300);
+        }
+
+        function deleteMonth(monthKey) {
+            if (!confirm(`Delete all transactions for ${getMonthLabel(monthKey)}?`)) return;
+            const account = getSelectedAccount();
+            if (!account) return;
+            account.transactions = account.transactions.filter(t => !t.date.startsWith(monthKey));
+            render();
+            showToast(`Month ${getMonthLabel(monthKey)} deleted`);
+        }
+
+        // ─── RESET CURRENT MONTH ─────────────────────────────────
+
+        function resetCurrentMonth() {
+            const account = getSelectedAccount();
+            if (!account) return;
+            const currentMonth = getCurrentMonth();
+            const count = account.transactions.filter(t => t.date.startsWith(currentMonth)).length;
+            if (count === 0) {
+                alert('No transactions to reset for the current month.');
+                return;
+            }
+            if (!confirm(`Reset ${count} transactions for ${getMonthLabel(currentMonth)}?`)) return;
+            account.transactions = account.transactions.filter(t => !t.date.startsWith(currentMonth));
+            render();
+            showToast(`Current month reset (${count} transactions removed)`);
+        }
+
+        // ─── EXPORT (Styled Excel .xlsx) ─────────────────────────
+
+        function exportData() {
+            const account = getSelectedAccount();
+            if (!account) {
+                alert('Please select an account first.');
+                return;
+            }
+            if (account.transactions.length === 0) {
+                alert('No transactions to export.');
+                return;
+            }
+
+            const data = account.transactions.map(t => ({
+                Date: t.date,
+                Description: t.description,
+                Amount: t.amount,
+                Type: t.type,
+                Category: t.category,
+                Bucket: t.bucket,
+            }));
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(data);
+
+            ws['!cols'] = [
+                { wch: 14 },
+                { wch: 30 },
+                { wch: 12 },
+                { wch: 12 },
+                { wch: 18 },
+                { wch: 18 },
+            ];
+
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            const headerCells = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Bucket'];
+            for (let col = 0; col < headerCells.length; col++) {
+                const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+                if (!ws[cellAddress]) continue;
+                ws[cellAddress].s = {
+                    fill: { fgColor: { rgb: "1E293B" } },
+                    font: { color: { rgb: "FFFFFF" }, bold: true, sz: 11 },
+                    alignment: { horizontal: "left", vertical: "center" },
+                };
+            }
+
+            const rows = account.transactions;
+            for (let r = 0; r < rows.length; r++) {
+                const tx = rows[r];
+                const isCredit = tx.type === 'credit';
+                const bgColor = isCredit ? "DCFCE7" : "FEE2E2";
+                const textColor = isCredit ? "166534" : "991B1B";
+                for (let c = 0; c < 6; c++) {
+                    const cellAddress = XLSX.utils.encode_cell({ r: r + 1, c: c });
+                    if (!ws[cellAddress]) continue;
+                    ws[cellAddress].s = {
+                        fill: { fgColor: { rgb: bgColor } },
+                        font: { color: { rgb: textColor }, sz: 10 },
+                        alignment: { horizontal: c === 2 ? "right" : "left", vertical: "center" },
+                    };
+                }
+            }
+
+            XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+            XLSX.writeFile(wb, `${account.name}_transactions.xlsx`);
+            showToast(`Exported ${account.transactions.length} transactions`);
+        }
+
+        // ─── IMPORT ──────────────────────────────────────────────
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const account = getSelectedAccount();
+            if (!account) {
+                alert('Please select an account first.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet);
+
+                    let imported = 0;
+                    for (const row of json) {
+                        const date = row['Date'] || row['date'] || '';
+                        const desc = row['Description'] || row['description'] || 'Imported';
+                        const amount = parseFloat(row['Amount'] || row['amount'] || 0);
+                        const type = row['Type'] || row['type'] || 'expense';
+                        const category = row['Category'] || row['category'] || 'Imported';
+                        const bucket = row['Bucket'] || row['bucket'] || 'necessities';
+
+                        if (!date || !amount || amount <= 0) continue;
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date).trim())) continue;
+
+                        const tx = {
+                            id: generateId(),
+                            date: String(date).trim(),
+                            description: String(desc).trim(),
+                            amount: Math.round(amount * 100) / 100,
+                            type: String(type).toLowerCase() === 'credit' ? 'credit' : 'debit',
+                            category: String(category).trim(),
+                            bucket: bucketConfig[String(bucket).trim()] ? String(bucket).trim() : 'necessities',
+                        };
+                        account.transactions.push(tx);
+                        imported++;
+                    }
+
+                    if (imported === 0) {
+                        alert('No valid transactions found in the file.');
+                    } else {
+                        alert(`Successfully imported ${imported} transactions.`);
+                        render();
+                        showToast(`Imported ${imported} transactions`);
+                    }
+                } catch (err) {
+                    alert('Error reading file: ' + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            event.target.value = '';
+        }
+
+        // ─── TABS ──────────────────────────────────────────────────
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-panel').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('tab-active', 'tab-inactive');
+                el.classList.add('tab-inactive');
+            });
+
+            const panel = document.getElementById('panel-' + tabId);
+            if (panel) panel.classList.remove('hidden');
+
+            const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+            if (btn) {
+                btn.classList.remove('tab-inactive');
+                btn.classList.add('tab-active');
+            }
+        }
+
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                if (tab) switchTab(tab);
+            });
+        });
+
+        // ─── KEYBOARD SHORTCUTS ──────────────────────────────────
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && document.activeElement === document.getElementById('incomeInput')) {
+                updateIncome();
+            }
+            if (e.key === 'Escape') {
+                closeModal();
+                closeAccountModal();
+                closeAddAccount();
+                closeEditAccountModal();
+                closeViewEditModal();
+            }
+        });
+
+        // ─── INIT ──────────────────────────────────────────────────
+
+        function seedDefaultData() {
+            const defaultAccount = {
+                id: generateId(),
+                name: 'Personal',
+                currency: 'USD',
+                income: 5000,
+                transactions: [],
+            };
+
+            const now = new Date();
+            const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+
+            defaultAccount.transactions.push({
+                id: generateId(),
+                date: currentMonth + '-01',
+                description: 'Salary Deposit',
+                amount: 5000,
+                type: 'credit',
+                category: 'Salary',
+                bucket: 'income'
+            });
+
+            const samples = [
+                { desc: 'Rent Payment', amt: 1800, cat: 'Rent', bucket: 'necessities' },
+                { desc: 'Grocery Store', amt: 156.30, cat: 'Groceries', bucket: 'necessities' },
+                { desc: 'Gas Station', amt: 48.50, cat: 'Transport', bucket: 'necessities' },
+                { desc: 'Coffee Shop', amt: 12.75, cat: 'Dining', bucket: 'free_money' },
+                { desc: 'Netflix', amt: 15.99, cat: 'Subscription', bucket: 'free_money' },
+                { desc: 'Student Loan', amt: 250.00, cat: 'Loan', bucket: 'debt_invest' },
+                { desc: 'Brokerage Deposit', amt: 400.00, cat: 'Investment', bucket: 'debt_invest' },
+                { desc: 'Flight Booking', amt: 320.00, cat: 'Travel', bucket: 'vacation' },
+                { desc: 'Emergency Fund', amt: 600.00, cat: 'Savings', bucket: 'savings' },
+            ];
+
+            for (const s of samples) {
+                const day = String(2 + Math.floor(Math.random() * 25)).padStart(2, '0');
+                defaultAccount.transactions.push({
+                    id: generateId(),
+                    date: currentMonth + '-' + day,
+                    description: s.desc,
+                    amount: s.amt,
+                    type: 'debit',
+                    category: s.cat,
+                    bucket: s.bucket,
+                });
+            }
+
+            state.accounts = [defaultAccount];
+            state.selectedAccountId = defaultAccount.id;
+        }
+
+        function init() {
+            const hasSaved = loadState();
+
+            if (!hasSaved || state.accounts.length === 0) {
+                seedDefaultData();
+            }
+
+            // Ensure selected account exists
+            if (state.selectedAccountId && !state.accounts.find(a => a.id === state.selectedAccountId)) {
+                state.selectedAccountId = state.accounts.length > 0 ? state.accounts[0].id : null;
+            }
+
+            render();
+            console.log('✅ Tracking ready — data persisted via localStorage.');
+        }
+
+        init();
+
+        // Expose for inline onclick
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.submitModalTransaction = submitModalTransaction;
+        window.updateIncome = updateIncome;
+        window.resetCurrentMonth = resetCurrentMonth;
+        window.openAccountModal = openAccountModal;
+        window.closeAccountModal = closeAccountModal;
+        window.selectAccount = selectAccount;
+        window.showAddAccount = showAddAccount;
+        window.closeAddAccount = closeAddAccount;
+        window.addAccount = addAccount;
+        window.openEditAccountModal = openEditAccountModal;
+        window.closeEditAccountModal = closeEditAccountModal;
+        window.saveEditAccount = saveEditAccount;
+        window.deleteAccount = deleteAccount;
+        window.exportData = exportData;
+        window.importData = importData;
+        window.viewMonth = viewMonth;
+        window.closeViewEditModal = closeViewEditModal;
+        window.editTransaction = editTransaction;
+        window.deleteTransaction = deleteTransaction;
+        window.deleteMonth = deleteMonth;
+        window.switchTab = switchTab;
+
+        console.log('✅ Tracking ready — 55/5/10/15/15, full account & transaction management.');
+    </script>
+
+</body>
+</html>
